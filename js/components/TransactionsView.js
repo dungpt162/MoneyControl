@@ -1,26 +1,48 @@
 // Màn hình Giao dịch: chọn tháng, tìm kiếm/lọc, danh sách theo ngày, nút thêm.
-import { ref, computed, onMounted, onBeforeUnmount } from '../../vendor/vue.esm-browser.prod.js';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from '../../vendor/vue.esm-browser.prod.js';
 import { store } from '../store.js';
-import { setMonth, loadMonth } from '../data.js';
+import { setMonth, loadMonth, getAllLocal, loadAllMonths } from '../data.js';
 import { formatVND, monthLabel, shiftMonth, dayLabel, timeOf } from '../utils.js';
 import TransactionForm from './TransactionForm.js';
+import DueRecurring from './DueRecurring.js';
+
+const PAGE = 300; // số giao dịch hiển thị mỗi lần (tìm xuyên tháng có thể rất nhiều)
 
 export default {
   name: 'TransactionsView',
-  components: { TransactionForm },
+  components: { TransactionForm, DueRecurring },
   setup() {
     const keyword = ref('');
     const fCategory = ref('');
     const fWallet = ref('');
     const formOpen = ref(false);
     const editingTx = ref(null);
+    const newType = ref('chi');
+    const limit = ref(PAGE);
+
+    // Tìm trong mọi tháng: lấy bản sao trên máy, đồng thời tải các tháng còn thiếu từ Sheet
+    const allMode = ref(false);
+    const allTxs = ref([]);
+    const allLoading = ref(false);
+    const refreshAll = async () => { allTxs.value = await getAllLocal(); };
+    watch(allMode, async (on) => {
+      if (!on) return;
+      await refreshAll();
+      allLoading.value = true;
+      try { await loadAllMonths(); } catch (e) { store.loadError = e.message; }
+      await refreshAll();
+      allLoading.value = false;
+    });
+    watch(() => store.txs, () => { if (allMode.value) refreshAll(); });   // sau khi thêm/sửa/xóa
+    watch([keyword, fCategory, fWallet, allMode], () => { limit.value = PAGE; });
+    const source = computed(() => (allMode.value ? allTxs.value : store.txs));
 
     const norm = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd');
 
     // Lọc theo từ khóa (ghi chú, danh mục, ví, số tiền), danh mục, ví
     const filtered = computed(() => {
       const k = norm(keyword.value.trim());
-      return store.txs.filter((t) => {
+      return source.value.filter((t) => {
         if (fCategory.value && t.danh_muc !== fCategory.value) return false;
         if (fWallet.value && t.vi !== fWallet.value && !(t.loai === 'chuyen' && t.danh_muc === fWallet.value)) return false;
         if (!k) return true;
@@ -31,9 +53,9 @@ export default {
     // Gom theo ngày (danh sách đã sắp xếp mới -> cũ)
     const groups = computed(() => {
       const map = new Map();
-      for (const t of filtered.value) {
+      for (const t of filtered.value.slice(0, limit.value)) {
         const key = t.ngay_gio.substring(0, 10);
-        if (!map.has(key)) map.set(key, { key, label: dayLabel(t.ngay_gio), items: [], thu: 0, chi: 0 });
+        if (!map.has(key)) map.set(key, { key, label: dayLabel(t.ngay_gio, allMode.value), items: [], thu: 0, chi: 0 });
         const g = map.get(key);
         g.items.push(t);
         if (t.loai === 'thu') g.thu += t.so_tien;
@@ -60,7 +82,7 @@ export default {
     const subOf = (t) => [pendingIds.value.has(t.id) ? '⏳' : '', timeOf(t.ngay_gio), t.loai === 'chuyen' ? '' : t.vi, t.ghi_chu].filter(Boolean).join(' · ');
     const amountText = (t) => (t.loai === 'thu' ? '+' : t.loai === 'chi' ? '-' : '') + formatVND(t.so_tien);
 
-    const openNew = () => { editingTx.value = null; formOpen.value = true; };
+    const openNew = () => { editingTx.value = null; newType.value = 'chi'; formOpen.value = true; };
     const openEdit = (t) => { editingTx.value = t; formOpen.value = true; };
     const closeForm = () => { formOpen.value = false; };
 
@@ -72,11 +94,19 @@ export default {
       e.preventDefault();
       openNew();
     }
-    onMounted(() => document.addEventListener('keydown', onKey));
+    onMounted(() => {
+      document.addEventListener('keydown', onKey);
+      // Mở từ phím tắt trên màn hình chính (?add=chi|thu)
+      if (store.addRequest) {
+        editingTx.value = null; newType.value = store.addRequest; formOpen.value = true;
+        store.addRequest = '';
+      }
+    });
     onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
 
     return {
-      store, keyword, fCategory, fWallet, formOpen, editingTx, filtered, groups, totals,
+      store, keyword, fCategory, fWallet, formOpen, editingTx, newType, filtered, groups, totals,
+      allMode, allLoading, limit, PAGE,
       formatVND, monthLabel, setMonth, loadMonth, shiftMonth,
       iconOf, colorOf, titleOf, subOf, amountText, openNew, openEdit, closeForm,
     };
@@ -100,6 +130,7 @@ export default {
       </div>
 
       <div class="filters">
+      <label class="check"><input type="checkbox" v-model="allMode"> Tìm trong tất cả các tháng</label>
       <input class="input" type="search" v-model="keyword" placeholder="Tìm theo ghi chú, danh mục, số tiền...">
       <div class="row">
         <select class="input" v-model="fCategory">
@@ -115,11 +146,15 @@ export default {
       </aside>
 
       <div class="tx-list">
+      <DueRecurring />
       <div v-if="store.loadError" class="result err" style="margin-bottom:12px">{{ store.loadError }}</div>
+      <div v-if="allMode" class="hint" style="margin:0 0 8px">
+        {{ allLoading ? 'Đang tải các tháng từ Sheet...' : 'Đang xem tất cả các tháng' }} · {{ filtered.length }} giao dịch
+      </div>
 
       <div v-if="!groups.length" class="placeholder">
         <div class="big">🧾</div>
-        {{ store.loading ? 'Đang tải...' : (keyword || fCategory || fWallet ? 'Không có giao dịch khớp bộ lọc.' : 'Chưa có giao dịch nào trong tháng này.') }}
+        {{ store.loading ? 'Đang tải...' : (keyword || fCategory || fWallet ? 'Không có giao dịch khớp bộ lọc.' : (allMode ? 'Chưa có giao dịch nào.' : 'Chưa có giao dịch nào trong tháng này.')) }}
       </div>
 
       <section v-for="g in groups" :key="g.key" class="day">
@@ -139,10 +174,13 @@ export default {
           <span class="txamt" :class="t.loai">{{ amountText(t) }}</span>
         </button>
       </section>
+      <button v-if="filtered.length > limit" class="btn" style="width:100%;margin-top:8px" @click="limit += PAGE">
+        Hiện thêm ({{ filtered.length - limit }} giao dịch nữa)
+      </button>
       </div>
       </div>
 
       <button class="fab" @click="openNew" aria-label="Thêm giao dịch">＋</button>
-      <TransactionForm v-if="formOpen" :tx="editingTx" @close="closeForm" />
+      <TransactionForm v-if="formOpen" :tx="editingTx" :initial-type="newType" @close="closeForm" />
     </div>`,
 };

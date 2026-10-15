@@ -31,6 +31,29 @@ export function parseMoney(input) {
   return null;
 }
 
+/**
+ * Nhập nhanh cho form giao dịch: như parseMoney, thêm
+ *  - số nguyên 1-999 hiểu là nghìn đồng: "45" -> 45000
+ *  - phép cộng/trừ: "30+15" -> 45000, "1tr-200k" -> 800000
+ * Trả về null nếu không hợp lệ hoặc kết quả không dương.
+ */
+export function parseQuickAmount(input) {
+  const s = String(input ?? '').toLowerCase().replace(/\s/g, '');
+  if (!s) return null;
+  const parts = s.split(/([+-])/);
+  let total = 0, sign = 1;
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    if (i % 2 === 1) { sign = p === '-' ? -1 : 1; continue; }
+    if (p === '') return null;
+    let v = parseMoney(p);
+    if (v == null) return null;
+    if (/^\d{1,3}$/.test(p) && v >= 1 && v <= 999) v *= 1000;
+    total += sign * v;
+  }
+  return total > 0 ? total : null;
+}
+
 /** Như parseMoney nhưng cho phép dấu trừ (số dư đầu kỳ âm = đang nợ). Rỗng -> 0; sai -> null. */
 export function parseSignedMoney(input) {
   const s = String(input ?? '').trim();
@@ -69,11 +92,11 @@ export function monthLabel(key) {
   return `Tháng ${Number(m)}/${y}`;
 }
 
-/** "2026-10-06T..." -> "Thứ Ba, 06/10" */
-export function dayLabel(iso) {
+/** "2026-10-06T..." -> "Thứ Ba, 06/10" (withYear: "Thứ Ba, 06/10/2026") */
+export function dayLabel(iso, withYear = false) {
   const [y, m, d] = iso.substring(0, 10).split('-').map(Number);
   const names = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
-  return `${names[new Date(y, m - 1, d).getDay()]}, ${pad(d)}/${pad(m)}`;
+  return `${names[new Date(y, m - 1, d).getDay()]}, ${pad(d)}/${pad(m)}${withYear ? '/' + y : ''}`;
 }
 
 /** "2026-10-06T12:30:00+07:00" -> "12:30" */
@@ -88,4 +111,10 @@ export function monthKey(v = new Date()) {
 export function shiftMonth(key, delta) {
   const [y, m] = key.split('-').map(Number);
   return monthKey(new Date(y, m - 1 + delta, 1));
+}
+
+/** Số ngày trong tháng "YYYY-MM". */
+export function daysInMonth(key) {
+  const [y, m] = key.split('-').map(Number);
+  return new Date(y, m, 0).getDate();
 }

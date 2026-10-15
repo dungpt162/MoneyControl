@@ -23,13 +23,14 @@ export const store = reactive({
 
   month: monthKey(),     // tháng đang xem "YYYY-MM"
   txs: [],               // giao dịch của tháng đang xem (đã sắp xếp mới -> cũ)
-  config: { categories: [], wallets: [], budgets: [] },
+  config: { categories: [], wallets: [], budgets: [], recurring: [] },
   balances: {},          // số dư từng ví { tênVí: số } do server tính, có cache trên máy
   loading: false,
   loadError: '',         // lỗi khi tải dữ liệu từ Sheet (không chặn xem dữ liệu cục bộ)
   // Trạng thái đồng bộ: synced | pending | syncing | error
   // ids = id các giao dịch còn thao tác chờ gửi; last = lần đồng bộ thành công gần nhất (ms)
   sync: { state: 'synced', pending: 0, error: '', ids: [], last: 0 },
+  addRequest: '',        // yêu cầu mở form thêm giao dịch ('chi' | 'thu'), vd từ phím tắt trên màn hình chính
   installEvent: null,    // sự kiện beforeinstallprompt để hiện nút "Cài app"
 });
 

@@ -1,18 +1,21 @@
 // Form thêm/sửa giao dịch dạng bottom sheet. Thiết kế để nhập nhanh: mở là gõ số tiền ngay.
 import { ref, computed, watch, onMounted } from '../../vendor/vue.esm-browser.prod.js';
 import { store } from '../store.js';
-import { saveTransaction, deleteTransaction, blankTx, refreshConfig } from '../data.js';
-import { parseMoney, formatVND, uuid, toLocalIso, toInputValue, fromInputValue } from '../utils.js';
+import { saveTransaction, deleteTransaction, blankTx, refreshConfig, getAllLocal } from '../data.js';
+import { parseQuickAmount, formatVND, uuid, toLocalIso, toInputValue, fromInputValue } from '../utils.js';
 
 const LAST_WALLET_KEY = 'mc_last_wallet';
 
 export default {
   name: 'TransactionForm',
-  props: { tx: { type: Object, default: null } }, // null = thêm mới
+  props: {
+    tx: { type: Object, default: null },            // null = thêm mới
+    initialType: { type: String, default: 'chi' },  // loại mặc định khi thêm mới
+  },
   emits: ['close'],
   setup(props, { emit }) {
     const editing = !!props.tx;
-    const base = props.tx ? { ...props.tx } : blankTx(uuid());
+    const base = props.tx ? { ...props.tx } : { ...blankTx(uuid()), loai: props.initialType };
 
     // Ví mặc định: ví dùng gần nhất, nếu không còn thì ví đầu tiên
     const lastWallet = localStorage.getItem(LAST_WALLET_KEY);
@@ -28,9 +31,9 @@ export default {
     const error = ref('');
     const amountEl = ref(null);
 
-    const amount = computed(() => parseMoney(amountText.value));
+    const amount = computed(() => parseQuickAmount(amountText.value));
     const preview = computed(() => {
-      if (!amountText.value.trim()) return 'Gõ nhanh: 50k, 1.5tr, 1tr2, 250000';
+      if (!amountText.value.trim()) return 'Gõ nhanh: 45 (=45k), 50k, 1tr2, 30+15';
       return amount.value ? '= ' + formatVND(amount.value) : 'Số tiền chưa hợp lệ';
     });
 
@@ -82,6 +85,35 @@ export default {
       emit('close');
     }
 
+    // Gợi ý giao dịch hay dùng: gom theo (loại, danh mục, ví, ghi chú) trong 90 ngày gần nhất
+    const suggestions = ref([]);
+    async function loadSuggestions() {
+      const since = toLocalIso(new Date(Date.now() - 90 * 86400000)).substring(0, 10);
+      const groups = new Map();
+      for (const t of await getAllLocal()) {   // đã sắp xếp mới -> cũ
+        if (t.loai === 'chuyen' || t.ngay_gio.substring(0, 10) < since) continue;
+        const key = [t.loai, t.danh_muc, t.vi, t.ghi_chu.trim().toLowerCase()].join('|');
+        const g = groups.get(key);
+        if (g) g.count++;
+        else groups.set(key, { key, loai: t.loai, danh_muc: t.danh_muc, vi: t.vi, ghi_chu: t.ghi_chu.trim(), so_tien: t.so_tien, count: 1 });
+      }
+      const cats = store.config.categories, wallets = store.config.wallets.map((w) => w.name);
+      suggestions.value = [...groups.values()]
+        .filter((g) => g.count >= 2 && cats.some((c) => c.name === g.danh_muc) && wallets.includes(g.vi))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 6);
+    }
+    const iconOfCat = (name) => (store.config.categories.find((c) => c.name === name) || {}).icon || '📦';
+    function applySuggestion(g) {
+      loai.value = g.loai;
+      category.value = g.danh_muc;
+      wallet.value = g.vi;
+      note.value = g.ghi_chu;
+      amountText.value = String(g.so_tien);
+      // Chọn sẵn số tiền để gõ đè ngay
+      setTimeout(() => { if (amountEl.value) { amountEl.value.focus(); amountEl.value.select(); } });
+    }
+
     // Chưa có ví (config chưa tải về): tải lại ngay và tự chọn ví mặc định khi có
     const noWallets = computed(() => !store.config.wallets.length);
     const reloading = ref(false);
@@ -98,9 +130,10 @@ export default {
     onMounted(() => {
       if (!editing && amountEl.value) amountEl.value.focus();
       if (noWallets.value) reloadConfig();
+      if (!editing) loadSuggestions();
     });
 
-    return { store, noWallets, reloading, reloadConfig, editing, loai, amountText, category, wallet, when, note, error, amountEl, preview, setType, save, remove };
+    return { store, suggestions, iconOfCat, applySuggestion, formatVND, noWallets, reloading, reloadConfig, editing, loai, amountText, category, wallet, when, note, error, amountEl, preview, setType, save, remove };
   },
   template: `
     <div class="sheet-backdrop" @click.self="$emit('close')">
@@ -115,6 +148,15 @@ export default {
           <button type="button" class="btn" style="margin-top:8px" :disabled="reloading" @click="reloadConfig">Tải lại</button>
         </div>
 
+        <div v-if="suggestions.length && !editing" class="field">
+          <span>Hay dùng</span>
+          <div class="chips">
+            <button type="button" v-for="g in suggestions" :key="g.key" class="chip quick" @click="applySuggestion(g)">
+              {{ iconOfCat(g.danh_muc) }} {{ g.ghi_chu || g.danh_muc }} <small>{{ formatVND(g.so_tien) }}</small>
+            </button>
+          </div>
+        </div>
+
         <div class="seg">
           <button type="button" :class="{ on: loai === 'chi' }" @click="setType('chi')">Chi</button>
           <button type="button" :class="{ on: loai === 'thu' }" @click="setType('thu')">Thu</button>
@@ -124,7 +166,7 @@ export default {
         <label class="field">
           <span>Số tiền</span>
           <input ref="amountEl" class="input amount" v-model="amountText" type="text"
-                 inputmode="text" autocomplete="off" placeholder="0">
+                 inputmode="text" enterkeyhint="done" autocomplete="off" placeholder="0">
           <p class="hint">{{ preview }}</p>
         </label>
 

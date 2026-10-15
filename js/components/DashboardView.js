@@ -1,10 +1,12 @@
 // Trang Tổng quan: thẻ KPI, chi theo danh mục (vành khuyên), thu/chi 6 tháng, ngân sách,
 // giao dịch gần đây và số dư các ví. Dữ liệu theo tháng đang chọn trên header.
-import { computed, onMounted, watch } from '../../vendor/vue.esm-browser.prod.js';
+import { ref, computed, onMounted, watch } from '../../vendor/vue.esm-browser.prod.js';
 import { store } from '../store.js';
-import { loadHistory } from '../data.js';
+import { loadHistory, getMonthLocal } from '../data.js';
 import { formatVND, shiftMonth } from '../utils.js';
 import ChartCanvas from './ChartCanvas.js';
+import DueRecurring from './DueRecurring.js';
+import { monthProgress, spentByCategory, budgetPace } from '../insights.js';
 
 const FALLBACK = '#98a2b3';
 const short = (v) => (v >= 1e6 ? +(v / 1e6).toFixed(1) + 'tr' : v >= 1e3 ? +(v / 1e3).toFixed(0) + 'k' : v);
@@ -12,11 +14,17 @@ const css = (name) => getComputedStyle(document.documentElement).getPropertyValu
 
 export default {
   name: 'DashboardView',
-  components: { ChartCanvas },
+  components: { ChartCanvas, DueRecurring },
   setup() {
     onMounted(() => loadHistory());
     watch(() => store.month, () => loadHistory());
     watch(() => store.txs, () => loadHistory());   // sau khi thêm/sửa/xóa hoặc đồng bộ
+
+    // Giao dịch tháng trước (từ bản sao trên máy) để so sánh cùng kỳ; cập nhật khi loadHistory tải xong
+    const prevTxs = ref([]);
+    const loadPrev = async () => { prevTxs.value = await getMonthLocal(shiftMonth(store.month, -1)).catch(() => []); };
+    onMounted(loadPrev);
+    watch(() => [store.month, store.history], loadPrev);
 
     const totals = computed(() => {
       let thu = 0, chi = 0;
@@ -94,6 +102,36 @@ export default {
       }];
     });
 
+    // ----- Phân tích: nhịp chi, so với cùng kỳ tháng trước, cảnh báo ngân sách -----
+    const progress = computed(() => monthProgress(store.month));
+    const insight = computed(() => {
+      const p = progress.value;
+      const chi = totals.value.chi;
+      const prevToDate = Object.values(spentByCategory(prevTxs.value, p.day)).reduce((s, v) => s + v, 0);
+      const cur = spentByCategory(store.txs), prv = spentByCategory(prevTxs.value, p.day);
+      const rows = [...new Set([...Object.keys(cur), ...Object.keys(prv)])]
+        .map((name) => ({ name, icon: catOf(name).icon || '📦', cur: cur[name] || 0, prev: prv[name] || 0 }))
+        .map((r) => ({ ...r, diff: r.cur - r.prev, pct: r.prev ? Math.round(((r.cur - r.prev) / r.prev) * 100) : null }))
+        .filter((r) => r.diff !== 0)
+        .sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff))
+        .slice(0, 4);
+      return {
+        avg: p.day ? chi / p.day : 0,
+        forecast: p.current && p.day ? (chi / p.day) * p.days : null,
+        prevToDate,
+        pct: prevToDate ? Math.round(((chi - prevToDate) / prevToDate) * 100) : null,
+        rows,
+      };
+    });
+    const paceAlerts = computed(() => {
+      const used = spentByCategory(store.txs);
+      return store.config.budgets
+        .filter((b) => b.amount > 0)
+        .map((b) => ({ name: b.category, icon: catOf(b.category).icon || '📦', pace: budgetPace(used[b.category] || 0, b.amount, progress.value, formatVND) }))
+        .filter((a) => a.pace)
+        .sort((a, b) => (b.pace.level === 'over') - (a.pace.level === 'over'));
+    });
+
     // Thu/chi 6 tháng gần nhất
     const barData = computed(() => {
       const months = Array.from({ length: 6 }, (_, i) => shiftMonth(store.month, i - 5));
@@ -142,11 +180,13 @@ export default {
 
     return {
       store, totals, deltas, totalBalance, byCategory, donutData, donutOptions, donutPlugins, barData, barOptions,
-      budgets, recent, balanceOf, dateText, descOf, iconOf, colorOf, pillOf, walletOf, amountText, formatVND, go,
+      budgets, progress, insight, paceAlerts, recent, balanceOf, dateText, descOf, iconOf, colorOf, pillOf, walletOf, amountText, formatVND, go,
     };
   },
   template: `
     <div>
+      <DueRecurring />
+
       <div class="kpis">
         <div class="card kpi">
           <span class="kpi-ico" style="background:#e3f6ec">💵</span>
@@ -180,6 +220,37 @@ export default {
           </div>
         </div>
       </div>
+
+      <section v-if="paceAlerts.length" class="card">
+        <div class="card-head"><h2>⚠️ Cảnh báo ngân sách</h2><button class="link" @click="go('budget')">Xem →</button></div>
+        <ul class="insight-list">
+          <li v-for="a in paceAlerts" :key="a.name">
+            <span><b>{{ a.icon }} {{ a.name }}</b>: <span :class="a.pace.level === 'over' ? 'exp' : 'warn'">{{ a.pace.text }}</span></span>
+          </li>
+        </ul>
+      </section>
+
+      <section v-if="totals.chi || insight.prevToDate" class="card">
+        <div class="card-head"><h2>📈 Nhịp chi tiêu</h2></div>
+        <div class="insight-grid">
+          <div><small>Trung bình mỗi ngày</small><b>{{ formatVND(insight.avg) }}</b></div>
+          <div v-if="insight.forecast !== null"><small>Dự kiến cả tháng</small><b>{{ formatVND(insight.forecast) }}</b></div>
+          <div v-else><small>Tổng chi tháng</small><b>{{ formatVND(totals.chi) }}</b></div>
+          <div>
+            <small>So với cùng kỳ tháng trước</small>
+            <b v-if="insight.pct !== null" :class="insight.pct > 0 ? 'exp' : 'inc'">{{ insight.pct > 0 ? '↑' : insight.pct < 0 ? '↓' : '' }} {{ Math.abs(insight.pct) }}%</b>
+            <b v-else>—</b>
+          </div>
+        </div>
+        <ul v-if="insight.rows.length" class="insight-list">
+          <li v-for="r in insight.rows" :key="r.name">
+            <span>{{ r.icon }} {{ r.name }}: <b>{{ formatVND(r.cur) }}</b> <small>(tháng trước {{ formatVND(r.prev) }})</small></span>
+            <b :class="r.diff > 0 ? 'exp' : 'inc'">{{ r.diff > 0 ? '+' : '-' }}{{ formatVND(Math.abs(r.diff)) }}<template v-if="r.pct !== null"> · {{ r.diff > 0 ? '↑' : '↓' }}{{ Math.abs(r.pct) }}%</template></b>
+          </li>
+        </ul>
+        <p v-else class="hint">Chưa có dữ liệu tháng trước để so sánh.</p>
+        <p class="hint">So sánh với các ngày 1–{{ progress.day }} của tháng trước.</p>
+      </section>
 
       <div class="dash">
         <section class="card a-donut">

@@ -46,6 +46,7 @@ export function clean(tx) {
 
 // ----- Giao dịch -----
 export const getTxByMonth = (month) => withStore('tx', 'readonly', (s) => s.index('month').getAll(month));
+export const getAllTx = () => withStore('tx', 'readonly', (s) => s.getAll());
 export const putTx = (tx) => withStore('tx', 'readwrite', (s) => s.put({ ...clean(tx), _m: monthOf(tx) }));
 export const clearTx = () => withStore('tx', 'readwrite', (s) => s.clear());
 export const deleteTx =(id) => withStore('tx', 'readwrite', (s) => s.delete(id));

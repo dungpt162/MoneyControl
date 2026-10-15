@@ -5,6 +5,15 @@ import { initData } from './data.js';
 import App from './components/App.js';
 
 applyTheme();
+
+// Mở từ phím tắt trên màn hình chính (manifest shortcuts): ?add=chi | ?add=thu -> mở thẳng form thêm giao dịch
+const addParam = new URLSearchParams(location.search).get('add');
+if (addParam === 'chi' || addParam === 'thu') {
+  store.tab = 'transactions';
+  store.addRequest = addParam;
+  history.replaceState(null, '', location.pathname);
+}
+
 window.addEventListener('online', () => { store.online = true; });
 window.addEventListener('offline', () => { store.online = false; });
 

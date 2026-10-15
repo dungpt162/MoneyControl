@@ -392,3 +392,27 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ===== Sửa chiều cao: #app phải có chiều cao thì khung app (và sidebar) mới cao đủ màn hình ===== */
 #app { height: 100%; }
 .app { height: 100vh; height: 100dvh; }
+
+/* ===== Gợi ý hay dùng, phân tích, định kỳ, tìm xuyên tháng ===== */
+.chip.quick small { color: var(--muted); margin-left: 4px; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--primary); }
+.due h2 { margin-bottom: 8px; }
+.due-row { display: grid; grid-template-columns: 1fr 120px; gap: 8px; align-items: center; padding: 10px 0; border-top: 1px solid var(--border); }
+.due-row:first-of-type { border-top: 0; }
+.due-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.due-main small { color: var(--muted); }
+.due-amt { text-align: right; }
+.due-act { grid-column: 1 / -1; display: flex; gap: 8px; }
+.due-act .btn { flex: 1; }
+.due-prev { grid-column: 1 / -1; margin: 0; text-align: right; }
+.insight-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.insight-list li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 14px; }
+.insight-list li small { color: var(--muted); }
+.insight-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+.insight-grid > div { background: color-mix(in srgb, var(--primary) 8%, transparent); border-radius: 12px; padding: 10px 12px; }
+.insight-grid small { display: block; color: var(--muted); font-size: 12px; }
+.insight-grid b { font-size: 15px; }
+.pace { font-size: 13px; margin: 6px 0 0; }
+.pace.fast { color: var(--warn); } .pace.over { color: var(--danger); }
+@media (max-width: 480px) { .insight-grid { grid-template-columns: 1fr; } }

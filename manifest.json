@@ -9,6 +9,10 @@
   "orientation": "portrait",
   "background_color": "#f4f6f8",
   "theme_color": "#16a34a",
+  "shortcuts": [
+    { "name": "Thêm chi tiêu", "short_name": "Chi tiêu", "url": "./?add=chi", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Thêm thu nhập", "short_name": "Thu nhập", "url": "./?add=thu", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ],
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },

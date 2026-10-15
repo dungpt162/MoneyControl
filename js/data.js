@@ -9,6 +9,9 @@ import { toLocalIso, shiftMonth } from './utils.js';
 const configured = () => !!(store.settings.url && store.settings.token);
 const CONFIG_KEY = '__config'; // txId giả đánh dấu thao tác updateConfig trong hàng đợi
 
+/** Bảo đảm config có đủ các mục (server cũ chưa trả về recurring). */
+const normConfig = (cfg) => ({ categories: [], wallets: [], budgets: [], recurring: [], ...cfg, recurring: (cfg && cfg.recurring) || [] });
+
 /** Đọc giao dịch tháng đang xem từ IndexedDB vào state. */
 async function reloadLocal() {
   const list = await db.getTxByMonth(store.month);
@@ -24,7 +27,7 @@ export async function initData() {
   setInterval(() => { if (store.sync.pending > 0 && store.online) syncNow(); }, 30000);
   try {
     const cached = await db.getMeta('config');
-    if (cached) store.config = cached;
+    if (cached) store.config = normConfig(cached);
     store.balances = (await db.getMeta('balances')) || {};
     await reloadLocal();
     await refreshSync();
@@ -51,8 +54,8 @@ export async function refreshConfig() {
     if ((await db.getQueue()).some((i) => i.txId === CONFIG_KEY)) return;
     const cfg = await api.getConfig();
     store.loadError = '';
-    store.config = cfg;
-    await db.setMeta('config', JSON.parse(JSON.stringify(cfg)));
+    store.config = normConfig(cfg);
+    await db.setMeta('config', JSON.parse(JSON.stringify(store.config)));
   } catch (e) {
     store.loadError = e.message;
   }
@@ -72,9 +75,10 @@ export async function refreshBalances() {
 
 /** Lưu config (ví, danh mục, ngân sách): cập nhật ngay trên máy, gửi nền qua hàng đợi. */
 export async function saveConfig(config) {
-  store.config = config;
-  await db.setMeta('config', JSON.parse(JSON.stringify(config)));
-  await db.enqueue(CONFIG_KEY, { action: 'updateConfig', config: JSON.parse(JSON.stringify(config)) });
+  store.config = normConfig(config);
+  const plain = JSON.parse(JSON.stringify(store.config));
+  await db.setMeta('config', plain);
+  await db.enqueue(CONFIG_KEY, { action: 'updateConfig', config: plain });
   await afterWrite();
 }
 
@@ -88,6 +92,37 @@ export async function resetLocal() {
   await db.clearTx();
   await reloadLocal();
   await syncNow();
+}
+
+/** Toàn bộ giao dịch đang có trên máy (mọi tháng), mới -> cũ. */
+export async function getAllLocal() {
+  const list = await db.getAllTx();
+  list.sort((a, b) => (a.ngay_gio < b.ngay_gio ? 1 : a.ngay_gio > b.ngay_gio ? -1 : 0));
+  return list;
+}
+
+/** Giao dịch của một tháng đang có trên máy. */
+export const getMonthLocal = (month) => db.getTxByMonth(month);
+
+/**
+ * Tải mọi tháng có trong Sheet về máy để tìm kiếm xuyên tháng.
+ * Server cũ chưa có action getMonths thì chỉ dùng dữ liệu đã có trên máy.
+ * Trả về số tháng tải được.
+ */
+export async function loadAllMonths() {
+  if (!configured() || !store.online) return 0;
+  let months;
+  try {
+    ({ months } = await api.getMonths());
+  } catch (e) {
+    if (e.code === 'UNKNOWN_ACTION') return 0;
+    throw e;
+  }
+  const stale = months.filter((m) => !(fetchedAt[m] > Date.now() - 120000));
+  for (let i = 0; i < stale.length; i += 3) {
+    await Promise.all(stale.slice(i, i + 3).map((m) => fetchMonth(m).catch(() => {})));
+  }
+  return months.length;
 }
 
 /** Đổi tháng đang xem. */

@@ -4,6 +4,7 @@ import { ref, computed } from '../../vendor/vue.esm-browser.prod.js';
 import { store } from '../store.js';
 import { saveConfig } from '../data.js';
 import { formatVND, parseMoney } from '../utils.js';
+import { monthProgress, budgetPace } from '../insights.js';
 import MonthBar from './MonthBar.js';
 
 export default {
@@ -25,6 +26,13 @@ export default {
       const status = !limit ? 'none' : pct > 100 ? 'over' : pct >= 80 ? 'warn' : 'ok';
       return { ...c, limit, used, pct, status, left: limit - used };
     }).sort((a, b) => (b.limit > 0) - (a.limit > 0) || b.pct - a.pct));
+
+    // Nhịp chi so với thời gian đã qua trong tháng (chỉ tháng hiện tại): { tênDanhMục: { level, text } }
+    const pace = computed(() => {
+      const p = monthProgress(store.month), out = {};
+      for (const r of rows.value) { const x = budgetPace(r.used, r.limit, p, formatVND); if (x) out[r.name] = x; }
+      return out;
+    });
 
     const alerts = computed(() => rows.value.filter((r) => r.status === 'over' || r.status === 'warn'));
 
@@ -48,7 +56,7 @@ export default {
       await saveConfig(cfg);
     }
 
-    return { rows, alerts, editing, text, error, edit, save, formatVND };
+    return { rows, pace, alerts, editing, text, error, edit, save, formatVND };
   },
   template: `
     <div>
@@ -72,6 +80,7 @@ export default {
             <span>{{ formatVND(r.used) }} / {{ formatVND(r.limit) }}</span>
             <span :class="'st-' + r.status">{{ r.left >= 0 ? 'Còn ' + formatVND(r.left) : 'Vượt ' + formatVND(-r.left) }}</span>
           </div>
+          <p v-if="pace[r.name] && pace[r.name].level === 'fast'" class="pace fast">⚠️ {{ pace[r.name].text }}</p>
         </template>
         <div v-else-if="r.used" class="budget-foot"><span>Đã chi {{ formatVND(r.used) }}</span></div>
       </button>

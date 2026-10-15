@@ -8,6 +8,7 @@
  *      loai = danhmuc : ten, icon, mau
  *      loai = vi      : ten, icon, mau, gia_tri = số dư đầu kỳ
  *      loai = ngansach: ten = tên danh mục, gia_tri = ngân sách tháng
+ *      loai = dinhky  : ten = id, gia_tri = JSON khoản định kỳ {id,name,loai,amount,category,wallet,day,note,last}
  *
  * Quy ước giao dịch "chuyen" (chuyển ví):
  *  - vi       = ví nguồn (tiền đi ra)
@@ -16,7 +17,7 @@
  * Xác thực: token bí mật lưu trong Script Properties, khóa "TOKEN".
  *
  * API (mọi request đều cần token):
- *  GET  ?action=ping|getTransactions|getConfig|getBalances&token=...&month=2026-10
+ *  GET  ?action=ping|getTransactions|getConfig|getBalances|getMonths&token=...&month=2026-10
  *  POST body JSON (Content-Type: text/plain): { token, action, ... }
  *    addTransaction    { tx }
  *    updateTransaction { tx, oldMonth? }   (tự chuyển tab nếu đổi sang tháng khác)
@@ -74,6 +75,8 @@ function dispatch_(action, p) {
       return getConfig_();
     case 'getBalances':
       return getBalances_();
+    case 'getMonths':
+      return getMonths_();
     case 'addTransaction':
     case 'updateTransaction':
     case 'deleteTransaction':
@@ -337,7 +340,7 @@ function configSheet_() {
 
 function getConfig_() {
   var sheet = configSheet_();
-  var cfg = { categories: [], wallets: [], budgets: [] };
+  var cfg = { categories: [], wallets: [], budgets: [], recurring: [] };
   if (sheet.getLastRow() < 2) return cfg;
   sheet.getRange(2, 1, sheet.getLastRow() - 1, CONFIG_HEADERS.length).getValues().forEach(function (r) {
     var kind = String(r[0]);
@@ -347,6 +350,8 @@ function getConfig_() {
       cfg.wallets.push({ name: String(r[1]), icon: String(r[2]), color: String(r[3]), opening: Number(r[4]) || 0 });
     } else if (kind === 'ngansach') {
       cfg.budgets.push({ category: String(r[1]), amount: Number(r[4]) || 0 });
+    } else if (kind === 'dinhky') {
+      try { cfg.recurring.push(JSON.parse(String(r[4]))); } catch (e) { /* bỏ qua dòng hỏng */ }
     }
   });
   return cfg;
@@ -368,10 +373,22 @@ function updateConfig_(config) {
     if (!b.category) throw err_('BAD_CONFIG', 'Ngân sách thiếu tên danh mục.');
     rows.push(['ngansach', b.category, '', '', Math.round(Number(b.amount) || 0)]);
   });
+  (config.recurring || []).forEach(function (r) {
+    if (!r.id || !r.name) throw err_('BAD_CONFIG', 'Khoản định kỳ thiếu id hoặc tên.');
+    rows.push(['dinhky', r.id, '', '', JSON.stringify(r)]);
+  });
   var sheet = configSheet_();
   if (sheet.getLastRow() > 1) sheet.getRange(2, 1, sheet.getLastRow() - 1, CONFIG_HEADERS.length).clearContent();
   if (rows.length) sheet.getRange(2, 1, rows.length, CONFIG_HEADERS.length).setValues(rows);
   return getConfig_();
+}
+
+/** Danh sách các tab tháng đang có (YYYY-MM), mới -> cũ. */
+function getMonths_() {
+  var months = ss_().getSheets().map(function (s) { return s.getName(); })
+    .filter(function (n) { return MONTH_RE.test(n); });
+  months.sort().reverse();
+  return { months: months };
 }
 
 // ============================================================

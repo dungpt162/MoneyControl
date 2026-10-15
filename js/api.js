@@ -77,6 +77,7 @@ export const api = {
   ping: () => request('ping'),
   getConfig: () => request('getConfig'),
   getBalances: () => request('getBalances'),
+  getMonths: () => request('getMonths'),
   getTransactions: (month) => request('getTransactions', { month }),
   addTransaction: (tx) => request('addTransaction', { tx }, 'POST'),
   updateTransaction: (tx, oldMonth) => request('updateTransaction', { tx, oldMonth }, 'POST'),

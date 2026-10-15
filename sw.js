@@ -4,7 +4,7 @@
  * CẬP NHẬT PHIÊN BẢN: mỗi lần deploy bản mới, tăng VERSION bên dưới.
  * Tên cache đổi -> cache cũ bị xóa khi activate -> điện thoại nhận file mới.
  */
-const VERSION = 'v11';
+const VERSION = 'v12';
 const CACHE = 'moneycontrol-' + VERSION;
 
 const ASSETS = [
@@ -23,9 +23,12 @@ const ASSETS = [
   'js/db.js',
   'js/data.js',
   'js/sync.js',
+  'js/insights.js',
   'js/components/App.js',
   'js/components/TransactionForm.js',
   'js/components/ItemForm.js',
+  'js/components/RecurringForm.js',
+  'js/components/DueRecurring.js',
   'js/components/MonthBar.js',
   'js/components/DashboardView.js',
   'js/components/ChartCanvas.js',

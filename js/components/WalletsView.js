@@ -4,12 +4,15 @@ import { store } from '../store.js';
 import { refreshBalances } from '../data.js';
 import { formatVND } from '../utils.js';
 import ItemForm from './ItemForm.js';
+import RecurringForm from './RecurringForm.js';
 
 export default {
   name: 'WalletsView',
-  components: { ItemForm },
+  components: { ItemForm, RecurringForm },
   setup() {
-    const section = ref('wallet');      // 'wallet' | 'category'
+    const section = ref('wallet');      // 'wallet' | 'category' | 'recurring'
+    const recForm = ref(undefined);     // undefined = đóng; null = thêm mới; object = sửa
+    const catIcon = (name) => (store.config.categories.find((c) => c.name === name) || {}).icon || '🔁';
     const form = ref(null);             // { kind, item } khi đang mở form
 
     // Số dư = giá trị server tính; ví mới chưa có trong kết quả thì lấy số dư đầu kỳ
@@ -19,13 +22,14 @@ export default {
     const open = (kind, item = null) => { form.value = { kind, item }; };
     const close = () => { form.value = null; };
 
-    return { store, section, form, balanceOf, total, formatVND, open, close, refreshBalances };
+    return { store, section, form, recForm, catIcon, balanceOf, total, formatVND, open, close, refreshBalances };
   },
   template: `
     <div>
       <div class="seg">
         <button :class="{ on: section === 'wallet' }" @click="section = 'wallet'">Ví</button>
         <button :class="{ on: section === 'category' }" @click="section = 'category'">Danh mục</button>
+        <button :class="{ on: section === 'recurring' }" @click="section = 'recurring'">Định kỳ</button>
       </div>
 
       <template v-if="section === 'wallet'">
@@ -49,6 +53,22 @@ export default {
         <button class="btn primary" style="width:100%;margin-top:8px" @click="open('wallet')">＋ Thêm ví</button>
       </template>
 
+      <template v-else-if="section === 'recurring'">
+        <p class="hint" style="margin:0 0 12px">Khoản lặp lại mỗi tháng (tiền nhà, internet, lương...). Đến ngày app sẽ nhắc bạn xác nhận ở Tổng quan và Giao dịch.</p>
+        <div class="cards">
+        <button v-for="r in store.config.recurring" :key="r.id" class="txrow" @click="recForm = r">
+          <span class="txicon" style="background:#6b728033">{{ catIcon(r.category) }}</span>
+          <span class="txmain">
+            <span class="txtitle">{{ r.name }}</span>
+            <span class="txsub">Ngày {{ r.day }} hằng tháng · {{ r.wallet }}</span>
+          </span>
+          <span class="txamt" :class="r.loai">{{ (r.loai === 'thu' ? '+' : '-') + formatVND(r.amount) }}</span>
+        </button>
+        </div>
+        <div v-if="!store.config.recurring.length" class="placeholder">Chưa có khoản định kỳ nào.</div>
+        <button class="btn primary" style="width:100%;margin-top:8px" @click="recForm = null">＋ Thêm khoản định kỳ</button>
+      </template>
+
       <template v-else>
         <div class="cards">
         <button v-for="c in store.config.categories" :key="c.name" class="txrow" @click="open('category', c)">
@@ -61,6 +81,7 @@ export default {
         <button class="btn primary" style="width:100%;margin-top:8px" @click="open('category')">＋ Thêm danh mục</button>
       </template>
 
+      <RecurringForm v-if="recForm !== undefined" :item="recForm" @close="recForm = undefined" />
       <ItemForm v-if="form" :kind="form.kind" :item="form.item" @close="close" />
     </div>`,
 };
