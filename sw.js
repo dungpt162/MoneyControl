@@ -4,7 +4,7 @@
  * CẬP NHẬT PHIÊN BẢN: mỗi lần deploy bản mới, tăng VERSION bên dưới.
  * Tên cache đổi -> cache cũ bị xóa khi activate -> điện thoại nhận file mới.
  */
-const VERSION = 'v10';
+const VERSION = 'v11';
 const CACHE = 'moneycontrol-' + VERSION;
 
 const ASSETS = [

@@ -33,8 +33,11 @@ export default {
       const map = new Map();
       for (const t of filtered.value) {
         const key = t.ngay_gio.substring(0, 10);
-        if (!map.has(key)) map.set(key, { key, label: dayLabel(t.ngay_gio), items: [] });
-        map.get(key).items.push(t);
+        if (!map.has(key)) map.set(key, { key, label: dayLabel(t.ngay_gio), items: [], thu: 0, chi: 0 });
+        const g = map.get(key);
+        g.items.push(t);
+        if (t.loai === 'thu') g.thu += t.so_tien;
+        else if (t.loai === 'chi') g.chi += t.so_tien;
       }
       return [...map.values()];
     });
@@ -120,7 +123,13 @@ export default {
       </div>
 
       <section v-for="g in groups" :key="g.key" class="day">
-        <h3>{{ g.label }}</h3>
+        <h3>
+          <span>{{ g.label }}</span>
+          <span class="day-sum">
+            <span v-if="g.thu" class="inc">+{{ formatVND(g.thu) }}</span>
+            <span v-if="g.chi" class="exp">-{{ formatVND(g.chi) }}</span>
+          </span>
+        </h3>
         <button v-for="t in g.items" :key="t.id" class="txrow" @click="openEdit(t)">
           <span class="txicon" :style="{ background: colorOf(t) + '33' }">{{ iconOf(t) }}</span>
           <span class="txmain">

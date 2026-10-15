@@ -122,7 +122,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .summary b { font-size: 14px; white-space: nowrap; }
 .inc { color: var(--income); } .exp { color: var(--expense); }
 
-.day h3 { font-size: 13px; color: var(--muted); margin: 16px 0 6px; font-weight: 600; }
+.day h3 {
+  font-size: 13px; color: var(--muted); margin: 16px 0 6px; font-weight: 600;
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding-right: 12px;
+}
+.day-sum { display: flex; gap: 10px; font-variant-numeric: tabular-nums; }
 .txrow {
   display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
   padding: 10px 12px; margin-bottom: 6px; border: 0; border-radius: 12px;
